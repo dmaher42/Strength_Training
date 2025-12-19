@@ -174,202 +174,101 @@
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="module">
+  import { WIFE_PLAN } from "./plans/wife.plan.js";
   // ---- storage keys
   const KEY_SETTINGS = "wife_fitness_settings_v1";
   const KEY_STATUS   = "wife_fitness_status_v1"; // per-week, per-day
 
-  // ---- plan data (12-week progression)
-  const WEEK_PHASE = (w) => {
-    if (w <= 4) return { name: "Base", note: "Build habit + form. Keep it comfortable." };
-    if (w <= 8) return { name: "Build", note: "Add one extra set or a bit more pace." };
-    return { name: "Shape", note: "Slightly tougher intervals + steadier strength." };
-  };
+  const PLAN = WIFE_PLAN.days;
 
-  const PLAN = [
-    {
-      day: "Day 1",
-      focus: "Lower + Core",
-      tag: "Knee-friendly strength",
-      blocks: (cfg) => ([
-        blk("Warm-up (5 min)", [
-          "March in place 2 min",
-          "Hip circles + arm swings",
-          "Sit-to-stand from chair × 10"
-        ]),
-        blk("Strength (20–25 min)", strengthLower(cfg)),
-        blk("Core (5–8 min)", [
-          "Dead bugs: 3×10/side",
-          "Side plank (knees down ok): 2×20s/side",
-          "Optional: glute bridge hold 2×20s"
-        ]),
-        blk("Cool down (2–5 min)", [
-          "Easy walk around house + light stretching"
-        ])
-      ])
-    },
-    {
-      day: "Day 2",
-      focus: "Cardio",
-      tag: "Low impact",
-      blocks: (cfg) => ([
-        blk("Warm-up (5 min)", ["Easy walk / march"]),
-        blk("Main (20–30 min)", cardioSteady(cfg)),
-        blk("Cool down (3–5 min)", ["Slow walk + calf/hip stretch"])
-      ])
-    },
-    {
-      day: "Day 3",
-      focus: "Upper Body",
-      tag: "Strength",
-      blocks: (cfg) => ([
-        blk("Warm-up (5 min)", ["Arm circles", "Band pull-aparts (optional)", "Wall push-ups × 10"]),
-        blk("Strength (22–28 min)", strengthUpper(cfg)),
-        blk("Finisher (optional 3–5 min)", ["Farmer carry: 3×30–45s", "Or incline push-ups: 2×AMRAP (stop 2 reps before failure)"])
-      ])
-    },
-    {
-      day: "Day 4",
-      focus: "Intervals",
-      tag: "Fat-loss friendly",
-      blocks: (cfg) => ([
-        blk("Warm-up (5 min)", ["Easy march / walk"]),
-        blk("Intervals (20–25 min)", cardioIntervals(cfg)),
-        blk("Cool down (3–5 min)", ["Slow walk + breathing downshift"])
-      ])
-    },
-    {
-      day: "Day 5",
-      focus: "Full Body",
-      tag: "Strength",
-      blocks: (cfg) => ([
-        blk("Warm-up (5 min)", ["March 2 min", "Hip hinge practice × 8", "Incline push-ups × 8"]),
-        blk("Strength (22–28 min)", strengthFull(cfg)),
-        blk("Mobility (3–7 min)", ["Hamstrings", "Hips", "Upper back"])
-      ])
-    },
-    {
-      day: "Day 6",
-      focus: "Light Cardio + Mobility",
-      tag: "Recovery",
-      blocks: (cfg) => ([
-        blk("Easy cardio (20–30 min)", lightCardio(cfg)),
-        blk("Mobility (8–12 min)", [
-          "Hip flexor stretch 60s/side",
-          "Hamstring stretch 60s/side",
-          "Calf stretch 60s/side",
-          "Thoracic rotation 8/side"
-        ])
-      ])
-    },
-    {
-      day: "Day 7",
-      focus: "Active Recovery",
-      tag: "Keep the habit",
-      blocks: (cfg) => ([
-        blk("Pick ONE (20–30 min)", [
-          "Gentle walk",
-          "Stretching / yoga",
-          "Very easy full-body circuit (1–2 rounds)"
-        ]),
-        blk("Optional easy circuit (1–2 rounds)", [
-          "Glute bridge × 12",
-          "Incline push-ups × 8",
-          "One-arm row × 10/side",
-          "Dead bug × 8/side"
-        ])
-      ])
-    }
-  ];
-
-  function blk(title, items){
-    return { title, items };
+  // ---- plan helpers
+  function weekPhase(w){
+    const found = WIFE_PLAN.phases.find(p => w <= p.upToWeek);
+    return found || WIFE_PLAN.phases[WIFE_PLAN.phases.length - 1];
   }
 
   function repRange(cfg){
-    if (cfg.weights === "light") return "12–15 reps";
-    if (cfg.weights === "hard") return "8–10 reps";
-    return "10–12 reps";
+    return WIFE_PLAN.repRanges[cfg.weights] || WIFE_PLAN.repRanges.mod;
   }
 
   function roundsForDuration(cfg){
-    // quick scaling: 30=2 rounds, 35=2-3, 40=3, 45=3-4
     const d = Number(cfg.duration);
-    if (d <= 30) return 2;
-    if (d <= 35) return 3;
-    if (d <= 40) return 3;
-    return 4;
+    const match = WIFE_PLAN.roundScaling.find(r => d <= r.maxDuration);
+    return match ? match.rounds : WIFE_PLAN.roundScaling[WIFE_PLAN.roundScaling.length - 1].rounds;
+  }
+
+  function tpl(str, map){
+    return str.replace(/{{(.*?)}}/g, (_, k) => map[k.trim()] ?? "");
   }
 
   function strengthLower(cfg){
+    const data = WIFE_PLAN.strength.lower;
     const reps = repRange(cfg);
     const rounds = roundsForDuration(cfg);
-    const kneeOn = cfg.kneeMode === "on";
-    const squat = kneeOn ? "Chair goblet squat (pain-free depth)" : "Goblet squat (controlled depth)";
+    const squat = cfg.kneeMode === "on" ? data.squat.on : data.squat.off;
     return [
-      `Do ${rounds} rounds, rest ~60s between moves.`,
-      `${squat}: ${reps}`,
-      `DB Romanian deadlift: ${reps}`,
-      `Glute bridge: 15 reps`,
-      `Standing calf raises: 15 reps`
+      tpl(data.intro, { rounds }),
+      ...data.moves.map(m => tpl(m, { reps, squat }))
     ];
   }
 
   function strengthUpper(cfg){
+    const data = WIFE_PLAN.strength.upper;
     const reps = repRange(cfg);
     const rounds = roundsForDuration(cfg);
     return [
-      `Do ${rounds} rounds, rest ~60s between moves.`,
-      `DB floor/bench press: ${reps}`,
-      `One-arm DB row (chair/bench): ${reps}/side`,
-      `Seated DB shoulder press (light): 10 reps`,
-      `Lateral raises: 12 reps`,
-      `Curl + triceps extension: 12 reps each`
+      tpl(data.intro, { rounds }),
+      ...data.moves.map(m => tpl(m, { reps }))
     ];
   }
 
   function strengthFull(cfg){
+    const data = WIFE_PLAN.strength.full;
     const reps = repRange(cfg);
     const rounds = roundsForDuration(cfg);
-    const kneeOn = cfg.kneeMode === "on";
-    const squat = kneeOn ? "Chair squat (goblet hold)" : "Goblet squat";
+    const squat = cfg.kneeMode === "on" ? data.squat.on : data.squat.off;
     return [
-      `Do ${rounds} rounds, rest ~60s between moves.`,
-      `${squat}: ${reps}`,
-      `DB Romanian deadlift: ${reps}`,
-      `Incline push-ups: 8–10 reps`,
-      `Bent-over DB row: ${reps}`,
-      `Farmer carry: 30–45 seconds`
+      tpl(data.intro, { rounds }),
+      ...data.moves.map(m => tpl(m, { reps, squat }))
     ];
   }
 
   function cardioSteady(cfg){
     const d = Number(cfg.duration);
     const main = Math.max(20, d - 10);
+    const data = WIFE_PLAN.cardio.steady;
     return [
-      `Brisk walk / treadmill walk / marching: ${main} minutes`,
-      `Effort: “can talk, can’t sing”`
+      tpl(data.headline, { minutes: main }),
+      data.effort
     ];
   }
 
   function cardioIntervals(cfg){
-    const w = cfg.week;
-    const phase = WEEK_PHASE(w).name;
-    const rounds = (phase === "Base") ? 6 : (phase === "Build") ? 7 : 8;
-    return [
-      `Repeat ${rounds} rounds:`,
-      `1 min faster walk/march + 2 min easy`,
-      `No running. Keep it joint-friendly.`
-    ];
+    const phase = weekPhase(cfg.week).name;
+    const data = WIFE_PLAN.cardio.intervals;
+    const rounds = data.rounds[phase];
+    return data.pattern.map(line => tpl(line, { rounds }));
   }
 
   function lightCardio(cfg){
     const d = Number(cfg.duration);
     const main = Math.max(20, d - 10);
+    const data = WIFE_PLAN.cardio.light;
     return [
-      `Easy walk / easy march: ${main} minutes`,
-      `Keep it comfortable (recovery pace)`
+      tpl(data.headline, { minutes: main }),
+      data.effort
     ];
+  }
+
+  function buildBlock(def, cfg){
+    if (def.type === "strengthLower") return { title: WIFE_PLAN.strength.lower.title, items: strengthLower(cfg) };
+    if (def.type === "strengthUpper") return { title: WIFE_PLAN.strength.upper.title, items: strengthUpper(cfg) };
+    if (def.type === "strengthFull")  return { title: WIFE_PLAN.strength.full.title, items: strengthFull(cfg) };
+    if (def.type === "cardioSteady")   return { title: def.title, items: cardioSteady(cfg) };
+    if (def.type === "cardioIntervals")return { title: def.title, items: cardioIntervals(cfg) };
+    if (def.type === "lightCardio")    return { title: def.title, items: lightCardio(cfg) };
+    return { title: def.title, items: def.items };
   }
 
   // ---- rendering + state
@@ -377,6 +276,8 @@
   const elMeta = document.getElementById("weekMeta");
   const elWeek = document.getElementById("weekSelect");
   const elToast = document.getElementById("toast");
+
+  document.getElementById("subtitle").textContent = WIFE_PLAN.subtitle;
 
   const settings = load(KEY_SETTINGS, {
     week: 1,
@@ -386,7 +287,7 @@
   });
 
   // week select
-  for (let i=1;i<=12;i++){
+  for (let i=1;i<=WIFE_PLAN.weeks;i++){
     const opt = document.createElement("option");
     opt.value = String(i);
     opt.textContent = `Week ${i}`;
@@ -412,7 +313,7 @@
     render();
   });
   document.getElementById("nextWeek").addEventListener("click", ()=>{
-    settings.week = Math.min(12, settings.week + 1);
+    settings.week = Math.min(WIFE_PLAN.weeks, settings.week + 1);
     elWeek.value = String(settings.week);
     save(KEY_SETTINGS, settings);
     render();
@@ -427,7 +328,7 @@
 
   function render(){
     const cfg = { ...settings, week: Number(settings.week) };
-    const phase = WEEK_PHASE(cfg.week);
+    const phase = weekPhase(cfg.week);
     const status = load(KEY_STATUS, {});
     const weekKey = `w${cfg.week}`;
 
@@ -449,7 +350,7 @@
       <div class="row">
         <span class="pill"><span class="dot done"></span>Done: <b>${doneCount}</b></span>
         <span class="pill"><span class="dot miss"></span>Missed: <b>${missCount}</b></span>
-        <span class="pill"><span class="dot none"></span>Planned: <b>${7 - doneCount - missCount}</b></span>
+        <span class="pill"><span class="dot none"></span>Planned: <b>${PLAN.length - doneCount - missCount}</b></span>
       </div>
     `;
 
@@ -457,7 +358,7 @@
     elDays.innerHTML = "";
     PLAN.forEach((d, idx)=>{
       const dayStatus = ((status[weekKey]||{})[idx]) || "planned";
-      const blocks = d.blocks(cfg);
+      const blocks = d.blocks.map(b => buildBlock(b, cfg));
 
       const dayEl = document.createElement("div");
       dayEl.className = "day";
